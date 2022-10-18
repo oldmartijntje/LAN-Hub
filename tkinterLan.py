@@ -117,7 +117,10 @@ if hostOrClient == 'Host':
   sockets_list = [server_socket]
 
   # List of connected clients - socket as a key, user header and name as data
-  clients = {}
+  clientsBySocket = {}
+  clientByID = {}
+
+  currentID = 0
 
   print(f'Listening for connections on {IP}:{PORT}...')
 
@@ -180,7 +183,11 @@ if hostOrClient == 'Host':
         sockets_list.append(client_socket)
 
 
-        clients[client_socket] = user
+        clientsBySocket[client_socket] = {"username":user, "ID": currentID}
+        print(clientsBySocket[client_socket])
+        clientByID[currentID] = {"socket": client_socket, "username": user}
+
+        currentID += 1
         
         # save user to the user list
         playerList.append(user['data'].decode('utf-8'))
@@ -201,24 +208,24 @@ if hostOrClient == 'Host':
         # If False, client disconnected, cleanup
         if message is False:
             
-          print('Closed connection from: {}'.format(clients[notified_socket]['data'].decode('utf-8')))
+          print('Closed connection from: {}'.format(clientsBySocket[notified_socket]["username"]['data'].decode('utf-8')))
 
 
           # remove user from user list
           try:
-              playerList.remove(clients[notified_socket]['data'].decode('utf-8'))
+              playerList.remove(clientsBySocket[notified_socket]["username"]['data'].decode('utf-8'))
           except:
               e = 0
           # Remove from list for socket.socket()
           sockets_list.remove(notified_socket)
 
           # Remove from our list of users
-          del clients[notified_socket]
+          del clientsBySocket[notified_socket]
 
           continue
 
         # Get user by notified socket, so we will know who sent the message
-        user = clients[notified_socket]
+        user = clientsBySocket[notified_socket]["username"]
         print(f'Received message from {user["data"].decode("utf-8")}: {message["data"].decode("utf-8")}')
         #define the pingcommand
         pingCommand = False
@@ -242,7 +249,7 @@ if hostOrClient == 'Host':
           pass
 
         # Iterate over connected clients and broadcast message
-        for client_socket in clients:
+        for client_socket in clientsBySocket:
 
           # But don't sent it to sender unless it is a ping command
           if client_socket != notified_socket or pingCommand == True:
@@ -261,7 +268,7 @@ if hostOrClient == 'Host':
       sockets_list.remove(notified_socket)
 
       # Remove from our list of users
-      del clients[notified_socket]
+      del clientsBySocket[notified_socket]
 
 if hostOrClient == 'Client':
   #get the programs path
