@@ -100,7 +100,7 @@ if hostOrClient == 'Host':
 
   def alreadyConnectedError(client_socket):
     print('Refused new connection from {}:{}, username: {}, can\'t connect with the same account twice.'.format(*client_address, user['data'].decode('utf-8')))
-    client_socket.send(returnCustomMessage(f'{IP}:{PORT}')['header'] + returnCustomMessage(f'{IP}:{PORT}')['data'] + returnCustomMessage('Connection Refused, can\'t connect with the same account twice.')['header'] + returnCustomMessage('Connection Refused, ncan\'t connect with the same account twice.')['data'])
+    client_socket.send(returnCustomMessage(f'{IP}:{PORT}')['header'] + returnCustomMessage(f'{IP}:{PORT}')['data'] + returnCustomMessage('Connection Refused, can\'t connect with the same account twice.')['header'] + returnCustomMessage('Connection Refused, can\'t connect with the same account twice.')['data'])
     client_socket.close()
 
 
