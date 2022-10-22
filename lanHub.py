@@ -5,6 +5,7 @@ import errno
 import sys
 import pathlib
 import select
+from unicodedata import numeric
 import accounts_omac
 from tkinter.messagebox import showinfo, askyesno, showerror
 
@@ -79,6 +80,17 @@ if hostOrClient == 'Host':
   #standard ip and port
   ip = socket.gethostbyname(socket.gethostname())
   port = 1234
+
+  def returnCustomMessage(message):
+    sendMessage = {}
+    # header
+    # data
+    encodedMessage = message.encode('utf-8')
+    message_header = f"{len(encodedMessage):<{HEADER_LENGTH}}".encode('utf-8')
+    sendMessage['data'] = encodedMessage
+    sendMessage['header'] = message_header
+    return sendMessage
+
 
 
 
@@ -179,21 +191,42 @@ if hostOrClient == 'Host':
         if user is False:
             continue
 
-        # Add accepted socket to select.select() list
-        sockets_list.append(client_socket)
+        def wrongClientError(client_socket, error):
+          print('Refused new connection from {}:{}, username: {}, not an official or outdated client.'.format(*client_address, user['data'].decode('utf-8')))
+          # print(error)
+          client_socket.close()
+        # extracting the user ID from the username
+        userData = user['data'].decode('utf-8')
+        if '//' not in userData:
+          wrongClientError(client_socket,1)
+        elif 'x' not in userData.split('//', 1)[0]:
+          wrongClientError(client_socket,2)
+        elif not (userData.split('//', 1)[0].split('x',1)[0].isnumeric() and userData.split('//', 1)[0].split('x',1)[1].isnumeric()):
+          wrongClientError(client_socket,3)
+        else:
+          
+          username = userData.split('//',1)[1].encode('utf-8')
+          username_header = f"{len(username):<{HEADER_LENGTH}}".encode('utf-8')
+          user['data'] = username
+          user['header'] = username_header
 
+          clientsBySocket[client_socket] = {"username":user, "connectionID": currentID, "UserID": userData.split('//', 1)[0]}
+          print(clientsBySocket[client_socket])
+          clientByID[currentID] = {"socket": client_socket, "username": user}
 
-        clientsBySocket[client_socket] = {"username":user, "ID": currentID}
-        print(clientsBySocket[client_socket])
-        clientByID[currentID] = {"socket": client_socket, "username": user}
+          # username = my_username.encode('utf-8')
+          # username_header = f"{len(username):<{HEADER_LENGTH}}".encode('utf-8')
 
-        currentID += 1
-        
-        # save user to the user list
-        playerList.append(user['data'].decode('utf-8'))
+          currentID += 1
+          
+          # save user to the user list
+          playerList.append(user['data'].decode('utf-8'))
 
-        # Also save username and username header
-        print('Accepted new connection from {}:{}, username: {}'.format(*client_address, user['data'].decode('utf-8')))
+          # Add accepted socket to select.select() list
+          sockets_list.append(client_socket)
+
+          # Also save username and username header
+          print('Accepted new connection from {}:{}, username: {}'.format(*client_address, user['data'].decode('utf-8')))
 
 
       # Else existing socket is sending a message
@@ -231,22 +264,6 @@ if hostOrClient == 'Host':
         pingCommand = False
         #define username
         username = user['data'].decode('utf-8')
-        #check if it is a command
-        testForCommand = message["data"].decode("utf-8").split("\\")
-        if testForCommand[0] == "//ping":
-          #get length of custom message
-          customMessageLenght = (str(len(f"{user['data'].decode('utf-8')} wanted to see who is online: {playerList}")))
-          #if lengthe of number of lenght not long enough, add spaces
-          for x in range(HEADER_LENGTH - len(customMessageLenght)):
-              customMessageLenght += " "
-          #change things that are needed to send custom message
-          message['header'] = customMessageLenght.encode('utf-8')
-          message['data'] = f"{username} wanted to see who is online: {playerList}".encode('utf-8')
-
-          #say that it is a ping command
-          pingCommand = True
-        else:
-          pass
 
         # Iterate over connected clients and broadcast message
         for client_socket in clientsBySocket:
@@ -256,6 +273,7 @@ if hostOrClient == 'Host':
 
             # Send user and message (both with their headers)
             # We are reusing here message header sent by sender, and saved username header send by user when he connected
+            # client_socket.send(returnCustomMessage(f'{IP}:{PORT}')['header'] + returnCustomMessage(f'{IP}:{PORT}')['data'] + returnCustomMessage('boo')['header'] + returnCustomMessage('boo')['data'])
             client_socket.send(user['header'] + user['data'] + message['header'] + message['data'])
                 
                 
@@ -328,8 +346,7 @@ if hostOrClient == 'Client':
 
 
 
-  #list
-  commandList = ["//ping"]
+
 
   
   HEADER_LENGTH = 10
@@ -363,12 +380,16 @@ if hostOrClient == 'Client':
   # Set connection to non-blocking state, so .recv() call won;t block, just return some exception we'll handle
   client_socket.setblocking(False)
 
+  my_usernameBackup = my_username 
+  my_username = f'{data["UserID"]}//{my_username}'
+
   # Prepare username and header and send them
   # We need to encode username to bytes, then count number of bytes and prepare header of fixed size, that we encode to bytes as well
   username = my_username.encode('utf-8')
   username_header = f"{len(username):<{HEADER_LENGTH}}".encode('utf-8')
   client_socket.send(username_header + username)
 
+  my_username = my_usernameBackup
 
   def sendMessage():
     if message_var.get():
@@ -408,13 +429,9 @@ if hostOrClient == 'Client':
         message = client_socket.recv(message_length).decode('utf-8')
 
         # Print message
-        command = message.split("\\")
-        if command[0] in commandList:
-          doACommand(command,message,username,my_username)
-        else:
-          messagesList.insert(0,f'{username} > {message}')
-          changeMessage()
-          print(f'{username} > {message}')
+        messagesList.insert(0,f'{username} > {message}')
+        changeMessage()
+        print(f'{username} > {message}')
 
     except IOError as e:
       # This is normal on non blocking connections - when there are no incoming data error is going to be raised
