@@ -10,16 +10,17 @@ import accounts_omac
 from tkinter.messagebox import showinfo, askyesno, showerror
 
 configSettings = accounts_omac.configFileTkinter()
-data = accounts_omac.defaultConfigurations.defaultLoadingTkinter(configSettings)
-if data == False:
+accountData = accounts_omac.defaultConfigurations.defaultLoadingTkinter(configSettings)
+if accountData == False:
   exit()
-print(data)
+print(accountData)
 
+allowMultipleAccounts = True
 windowTitles = 'omac_LAN'
 
 def on_closing(windowTitles = 'omac_LAN'):
   if askyesno(windowTitles, f"Your program will be terminated\nShould we proceed?", icon ='warning'):
-    accounts_omac.saveAccount(data, configSettings)
+    accounts_omac.saveAccount(accountData, configSettings)
     exit()
 
 
@@ -91,8 +92,16 @@ if hostOrClient == 'Host':
     sendMessage['header'] = message_header
     return sendMessage
 
+  def wrongClientError(client_socket, error):
+    print('Refused new connection from {}:{}, username: {}, not an official or outdated client.'.format(*client_address, user['data'].decode('utf-8')))
+    client_socket.send(returnCustomMessage(f'{IP}:{PORT}')['header'] + returnCustomMessage(f'{IP}:{PORT}')['data'] + returnCustomMessage('Connection Refused, not an official or outdated client.')['header'] + returnCustomMessage('Connection Refused, not an official or outdated client.')['data'])
+    client_socket.close()
+    # print(error)
 
-
+  def alreadyConnectedError(client_socket):
+    print('Refused new connection from {}:{}, username: {}, can\'t connect with the same account twice.'.format(*client_address, user['data'].decode('utf-8')))
+    client_socket.send(returnCustomMessage(f'{IP}:{PORT}')['header'] + returnCustomMessage(f'{IP}:{PORT}')['data'] + returnCustomMessage('Connection Refused, can\'t connect with the same account twice.')['header'] + returnCustomMessage('Connection Refused, ncan\'t connect with the same account twice.')['data'])
+    client_socket.close()
 
 
   #get the programs path
@@ -132,7 +141,7 @@ if hostOrClient == 'Host':
   clientsBySocket = {}
   clientByID = {}
 
-  currentID = 0
+  connectionID = 0
 
   print(f'Listening for connections on {IP}:{PORT}...')
 
@@ -191,10 +200,6 @@ if hostOrClient == 'Host':
         if user is False:
             continue
 
-        def wrongClientError(client_socket, error):
-          print('Refused new connection from {}:{}, username: {}, not an official or outdated client.'.format(*client_address, user['data'].decode('utf-8')))
-          # print(error)
-          client_socket.close()
         # extracting the user ID from the username
         userData = user['data'].decode('utf-8')
         if '//' not in userData:
@@ -203,6 +208,8 @@ if hostOrClient == 'Host':
           wrongClientError(client_socket,2)
         elif not (userData.split('//', 1)[0].split('x',1)[0].isnumeric() and userData.split('//', 1)[0].split('x',1)[1].isnumeric()):
           wrongClientError(client_socket,3)
+        elif userData.split('//', 1)[0] in clientByID and clientByID[userData.split('//', 1)[0]]['status'] == 'ACTIVE' and not allowMultipleAccounts:
+          alreadyConnectedError(client_socket)
         else:
           
           username = userData.split('//',1)[1].encode('utf-8')
@@ -210,14 +217,16 @@ if hostOrClient == 'Host':
           user['data'] = username
           user['header'] = username_header
 
-          clientsBySocket[client_socket] = {"username":user, "connectionID": currentID, "UserID": userData.split('//', 1)[0]}
-          print(clientsBySocket[client_socket])
-          clientByID[currentID] = {"socket": client_socket, "username": user}
+          clientsBySocket[client_socket] = {"username":user, "connectionID": connectionID, "UID": userData.split('//', 1)[0]}
+          if not allowMultipleAccounts:
+            clientByID[userData.split('//', 1)[0]] = {"connectionID": connectionID, "socket": client_socket, "username": user, "status": 'ACTIVE'}
+          else:
+            clientByID[connectionID] = {"connectionID": connectionID, "socket": client_socket, "username": user, "status": 'ACTIVE'}
 
           # username = my_username.encode('utf-8')
           # username_header = f"{len(username):<{HEADER_LENGTH}}".encode('utf-8')
 
-          currentID += 1
+          connectionID += 1
           
           # save user to the user list
           playerList.append(user['data'].decode('utf-8'))
@@ -235,9 +244,6 @@ if hostOrClient == 'Host':
           # Receive message
         message = receive_message(notified_socket)
 
-        
-
-
         # If False, client disconnected, cleanup
         if message is False:
             
@@ -253,6 +259,10 @@ if hostOrClient == 'Host':
           sockets_list.remove(notified_socket)
 
           # Remove from our list of users
+          if not allowMultipleAccounts:
+            clientByID[clientsBySocket[notified_socket]['UID']]['status'] = "DISCONNECTED"
+          else:
+            del clientByID[clientsBySocket[notified_socket]['connectionID']]
           del clientsBySocket[notified_socket]
 
           continue
@@ -331,7 +341,7 @@ if hostOrClient == 'Client':
     global Ip_name_var, clientConnectWindow, label,startButton
     clientConnectWindow = tkinter.Tk()
     Ip_name_var = tkinter.StringVar()
-    label = tkinter.Label(clientConnectWindow, text='Input the IP:')
+    label = tkinter.Label(clientConnectWindow, text='Input the IP:PORT')
     label.grid(column=0, row=0, ipadx=20, ipady=10, sticky="EW")
     Ip_entry = tkinter.Entry(clientConnectWindow, textvariable=Ip_name_var)
     Ip_entry.grid(column=0, row=1, ipadx=20, ipady=10, sticky="EW")
@@ -381,7 +391,7 @@ if hostOrClient == 'Client':
   client_socket.setblocking(False)
 
   my_usernameBackup = my_username 
-  my_username = f'{data["UserID"]}//{my_username}'
+  my_username = f'{accountData["UserID"]}//{my_username}'
 
   # Prepare username and header and send them
   # We need to encode username to bytes, then count number of bytes and prepare header of fixed size, that we encode to bytes as well
@@ -485,7 +495,7 @@ if hostOrClient == 'Client':
   clientWindow.after(10, tick)
   clientWindow.mainloop()
 
-data = accounts_omac.saveAccount(data, configSettings)
+accountData = accounts_omac.saveAccount(accountData, configSettings)
 
 
 
